@@ -1,86 +1,66 @@
 #
+# Copyright (C) 2021 CZ.NIC, z. s. p. o. (https://www.nic.cz/)
+#
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
 #
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=zerotier
-PKG_VERSION:=1.14.1
-PKG_RELEASE:=3
+PKG_NAME:=tailscale
+PKG_VERSION:=1.80.3
+PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/zerotier/ZeroTierOne/tar.gz/$(PKG_VERSION)?
-PKG_HASH:=4f9f40b27c5a78389ed3f3216c850921f6298749e5819e9f2edabb2672ce9ca0
-PKG_BUILD_DIR:=$(BUILD_DIR)/ZeroTierOne-$(PKG_VERSION)
+PKG_SOURCE_URL:=https://codeload.github.com/tailscale/tailscale/tar.gz/v$(PKG_VERSION)?
+PKG_HASH:=4ea7d4c1a4e86905f330f5d5f5288488cb29d6c586d5bcabf9d02c5481ba740d
 
-PKG_MAINTAINER:=Moritz Warning <moritzwarning@web.de>
-PKG_LICENSE:=BSL 1.1
-PKG_LICENSE_FILES:=LICENSE.txt
+PKG_MAINTAINER:=Zephyr Lykos <self@mochaa.ws>, \
+		Sandro Jäckel <sandro.jaeckel@gmail.com>
+PKG_LICENSE:=BSD-3-Clause
+PKG_LICENSE_FILES:=LICENSE
+PKG_CPE_ID:=cpe:/a:tailscale:tailscale
 
-PKG_ASLR_PIE:=0
+PKG_BUILD_DIR:=$(BUILD_DIR)/tailscale-$(PKG_VERSION)
+PKG_BUILD_DEPENDS:=golang/host
 PKG_BUILD_PARALLEL:=1
-PKG_BUILD_FLAGS:=gc-sections
+PKG_BUILD_FLAGS:=no-mips16
+
+GO_PKG:=\
+	tailscale.com/cmd/tailscaled
+GO_PKG_LDFLAGS:=-X 'tailscale.com/version.longStamp=$(PKG_VERSION)-$(PKG_RELEASE) (OpenWrt)'
+GO_PKG_LDFLAGS_X:=tailscale.com/version.shortStamp=$(PKG_VERSION)
+GO_PKG_TAGS:=ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion
 
 include $(INCLUDE_DIR)/package.mk
+include ../../lang/golang/golang-package.mk
 
-define Package/zerotier
+define Package/tailscale
   SECTION:=net
   CATEGORY:=Network
-  DEPENDS:=+libpthread +libstdcpp +kmod-tun +ip +libminiupnpc +libnatpmp +libatomic
-  TITLE:=Create flat virtual Ethernet networks of almost unlimited size
-  URL:=https://www.zerotier.com
   SUBMENU:=VPN
+  TITLE:=Zero config VPN
+  URL:=https://tailscale.com
+  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle +kmod-tun
+  PROVIDES:=tailscaled
 endef
 
-define Package/zerotier/description
-	ZeroTier creates a global provider-independent virtual private cloud network.
+define Package/tailscale/description
+  It creates a secure network between your servers, computers,
+  and cloud instances. Even when separated by firewalls or subnets.
 endef
 
-define Package/zerotier/config
-	source "$(SOURCE)/Config.in"
+define Package/tailscale/conffiles
+/etc/config/tailscale
+/etc/tailscale/
 endef
 
-ifeq ($(CONFIG_ZEROTIER_ENABLE_DEBUG),y)
-MAKE_FLAGS += ZT_DEBUG=1
-endif
-
-MAKE_FLAGS += \
-	ZT_EMBEDDED=1 \
-	ZT_SSO_SUPPORTED=0 \
-	DEFS="" \
-	OSTYPE="Linux" \
-
-define Build/Compile
-	$(call Build/Compile/Default,one)
-ifeq ($(CONFIG_ZEROTIER_ENABLE_SELFTEST),y)
-	$(call Build/Compile/Default,selftest)
-endif
+define Package/tailscale/install
+	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config
+	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin
+	$(LN) tailscaled $(1)/usr/sbin/tailscale
+	$(INSTALL_BIN) ./files//tailscale.init $(1)/etc/init.d/tailscale
+	$(INSTALL_DATA) ./files//tailscale.conf $(1)/etc/config/tailscale
 endef
 
-# Make binary smaller
-TARGET_CFLAGS += -Wl,-z,noexecstack
-TARGET_LDFLAGS += -Wl,--as-needed -Wl,-z,noexecstack
-
-# Prevent `-isystem ext` from causing the wrong miniupnpc header to be used (OpenWrt packages issue - 18019)
-TARGET_CFLAGS += -isystem $(STAGING_DIR)/usr/include
-
-define Package/zerotier/conffiles
-/etc/config/zerotier
-endef
-
-define Package/zerotier/install
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/zerotier-one $(1)/usr/bin/
-	$(LN) zerotier-one $(1)/usr/bin/zerotier-cli
-	$(LN) zerotier-one $(1)/usr/bin/zerotier-idtool
-	$(INSTALL_DIR) $(1)/etc/uci-defaults
-
-ifeq ($(CONFIG_ZEROTIER_ENABLE_SELFTEST),y)
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/zerotier-selftest $(1)/usr/bin/
-endif
-
-	$(CP) ./files/* $(1)/
-endef
-
-$(eval $(call BuildPackage,zerotier))
+$(eval $(call BuildPackage,tailscale))
